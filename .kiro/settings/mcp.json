@@ -1,0 +1,31 @@
+{
+  "mcpServers": {
+    "git-readonly": {
+      "command": "node",
+      "args": [
+        "dist/git-readonly-mcp.mjs",
+        "--workspace-folder",
+        ".",
+        "--repository-root",
+        "."
+      ],
+      "disabled": false,
+      "autoApprove": [
+        "git_list_repositories",
+        "git_status",
+        "git_log",
+        "git_show_commit",
+        "git_diff",
+        "git_range_diff",
+        "git_blame",
+        "git_grep",
+        "git_list_refs",
+        "git_list_tree",
+        "git_read_file",
+        "git_compare_refs",
+        "git_list_remotes",
+        "git_list_remote_refs"
+      ]
+    }
+  }
+}

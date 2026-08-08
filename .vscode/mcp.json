@@ -1,0 +1,15 @@
+{
+  "servers": {
+    "git-readonly": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "${workspaceFolder}/dist/git-readonly-mcp.mjs",
+        "--workspace-folder",
+        "${workspaceFolder}",
+        "--repository-root",
+        "${workspaceFolder}"
+      ]
+    }
+  }
+}

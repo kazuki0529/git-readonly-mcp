@@ -1,0 +1,50 @@
+{
+  "name": "git-readonly-mcp",
+  "version": "1.0.0",
+  "description": "Read-only Git inspection tools for MCP clients",
+  "type": "module",
+  "bin": {
+    "git-readonly-mcp": "dist/git-readonly-mcp.mjs"
+  },
+  "files": [
+    "dist/git-readonly-mcp.mjs",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "watch": "tsx watch src/index.ts",
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run --exclude test/integration/**",
+    "test:integration": "vitest run test/integration",
+    "check": "npm run lint && npm run typecheck && npm test && npm run build",
+    "pack:dry-run": "npm pack --dry-run"
+  },
+  "keywords": [
+    "mcp",
+    "git",
+    "code-review"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/server": "^2.0.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@modelcontextprotocol/client": "^2.0.0",
+    "@types/node": "^26.2.0",
+    "esbuild": "^0.28.1",
+    "eslint": "^10.8.1",
+    "tsx": "^4.23.11",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.66.0",
+    "vitest": "^4.1.10"
+  }
+}
