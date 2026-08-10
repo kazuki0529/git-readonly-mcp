@@ -154,6 +154,10 @@ export function registerGitTools(server: McpServer, registry: RepositoryRegistry
       head: z.string().min(1).optional(),
       mergeBase: z.boolean().default(false),
       format: z.enum(['patch', 'stat', 'name-status']).default('patch'),
+      contextLine: z.number().int().min(0).max(100).default(3)
+        .describe('Number of unchanged lines shown before and after each change in patch format.'),
+      findRenames: z.boolean().default(true)
+        .describe('Detect renamed files regardless of repository diff configuration.'),
       path: path.optional(),
     }),
     (input, signal) => queries.diff(registry.requirePath(input.repositoryId), input, signal),

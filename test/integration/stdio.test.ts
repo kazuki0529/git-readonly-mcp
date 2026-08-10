@@ -90,6 +90,69 @@ describe('bundled stdio server', () => {
     expect((file.structuredContent as { output: string }).output).toBe('# Fixture\n');
   });
 
+  it('configures diff context and rename detection', async () => {
+    const repositories = await client.callTool({ name: 'git_list_repositories', arguments: {} });
+    const structured = repositories.structuredContent as { repositories: Array<{ repositoryId: string }> };
+    const repositoryId = structured.repositories[1]?.repositoryId;
+    expect(repositoryId).toBeTypeOf('string');
+
+    const original = [
+      'first',
+      'before-8',
+      'before-7',
+      'before-6',
+      'before-5',
+      'before-4',
+      'before-3',
+      'before-2',
+      'before-1',
+      'original',
+      'after-1',
+      'after-2',
+      'after-3',
+      'after-4',
+      'after-5',
+      'after-6',
+      'after-7',
+      'after-8',
+      'last',
+      '',
+    ].join('\n');
+    await writeFile(join(secondRepositoryPath, 'source.txt'), original);
+    await git(secondRepositoryPath, ['add', 'source.txt']);
+    await git(secondRepositoryPath, ['commit', '--quiet', '-m', 'Add diff fixture']);
+    await writeFile(join(secondRepositoryPath, 'source.txt'), original.replace('original', 'changed'));
+
+    const eightLines = await client.callTool({
+      name: 'git_diff',
+      arguments: { repositoryId, contextLine: 8, findRenames: false },
+    });
+    const eightLinesOutput = (eightLines.structuredContent as { output: string }).output;
+    expect(eightLines.isError).not.toBe(true);
+    expect(eightLinesOutput).toContain('\n before-8\n');
+    expect(eightLinesOutput).toContain('-original\n+changed');
+    expect(eightLinesOutput).toContain('\n after-8\n');
+
+    await writeFile(join(secondRepositoryPath, 'source.txt'), original);
+    await git(secondRepositoryPath, ['mv', 'source.txt', 'renamed.txt']);
+
+    const detected = await client.callTool({
+      name: 'git_diff',
+      arguments: { repositoryId, mode: 'staged', format: 'name-status', findRenames: true },
+    });
+    expect(detected.isError).not.toBe(true);
+    expect((detected.structuredContent as { output: string }).output).toContain('R100\nsource.txt\nrenamed.txt');
+
+    const disabled = await client.callTool({
+      name: 'git_diff',
+      arguments: { repositoryId, mode: 'staged', format: 'name-status', findRenames: false },
+    });
+    const disabledOutput = (disabled.structuredContent as { output: string }).output;
+    expect(disabled.isError).not.toBe(true);
+    expect(disabledOutput).toContain('D\nsource.txt');
+    expect(disabledOutput).toContain('A\nrenamed.txt');
+  });
+
   it('registers a repository under an allowed root at runtime', async () => {
     const registration = await client.callTool({
       name: 'git_register_repository',

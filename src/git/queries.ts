@@ -40,6 +40,8 @@ export interface DiffOptions {
   head?: string | undefined;
   mergeBase: boolean;
   format: 'patch' | 'stat' | 'name-status';
+  contextLine: number;
+  findRenames: boolean;
   path?: string | undefined;
 }
 
@@ -110,7 +112,10 @@ export class GitQueries {
     options: DiffOptions,
     signal?: AbortSignal,
   ): Promise<QueryOutput> {
-    const args = ['diff', '--no-color', '--no-ext-diff', '--no-textconv', '--ignore-submodules=all'];
+    const args = [
+      'diff', '--no-color', '--no-ext-diff', '--no-textconv', '--ignore-submodules=all',
+      `--unified=${options.contextLine}`, options.findRenames ? '--find-renames' : '--no-renames',
+    ];
     if (options.format === 'stat') args.push('--stat');
     if (options.format === 'name-status') args.push('--name-status', '-z');
     if (options.mode === 'staged') args.push('--cached');

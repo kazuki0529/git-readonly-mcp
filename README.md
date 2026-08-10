@@ -167,7 +167,7 @@ Claude Desktop向けのワンクリック配布用 `.mcpb` は現在の成果物
 | `git_status` | branch、staged、unstaged、untracked状態を取得 |
 | `git_log` | revision、期間、author、message、pathで履歴を検索 |
 | `git_show_commit` | commit metadata、stat、任意のpatchを取得 |
-| `git_diff` | working tree、index、2 revisionを比較 |
+| `git_diff` | working tree、index、2 revisionをcontext行数・rename検出指定で比較 |
 | `git_range_diff` | 2つのcommit rangeを比較 |
 | `git_blame` | fileの行単位attributionを取得 |
 | `git_grep` | working tree、index、revisionの内容を検索 |
@@ -179,6 +179,8 @@ Claude Desktop向けのワンクリック配布用 `.mcpb` は現在の成果物
 | `git_list_remote_refs` | 設定済みpublic anonymous HTTPS remoteのrefを取得 |
 
 最初に`git_list_repositories`を呼びます。対象が未登録なら`git_register_repository`へpathを渡し、返された`repositoryId`を以後のツールへ渡します。ツール結果は`structuredContent`とJSON textの両方で返されます。
+
+`git_diff`の`contextLine`はpatchに含める変更前後の行数（0〜100、既定3）、`findRenames`はrename検出の有効・無効（既定`true`）を指定します。
 
 ## Security model
 
