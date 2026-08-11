@@ -1,9 +1,10 @@
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { realpath } from 'node:fs/promises';
-import { basename, isAbsolute, normalize, relative, resolve, sep } from 'node:path';
+import { basename, normalize, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { createIsolatedGitEnvironment } from '../git/environment.js';
+import { containsPath } from '../path-policy.js';
 
 /** repository初期化時だけ使うPromise形式のGit呼び出し。 */
 const execFileAsync = promisify(execFile);
@@ -138,13 +139,6 @@ async function inspectRepository(requestedPath: string): Promise<RepositoryEntry
     available: true,
     diagnostic: null,
   };
-}
-
-/** canonical pathが許可ルート自身またはその子孫かを判定する。 */
-function containsPath(root: string, candidate: string): boolean {
-  const difference = relative(root, candidate);
-  return difference === ''
-    || (!isAbsolute(difference) && difference !== '..' && !difference.startsWith(`..${sep}`));
 }
 
 /** local path全体を公開せず、短く安定したsuffixを生成する。 */

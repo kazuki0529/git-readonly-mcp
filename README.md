@@ -165,22 +165,75 @@ Claude Desktop向けのワンクリック配布用 `.mcpb` は現在の成果物
 | `git_list_repositories` | 設定済みfolderと`repositoryId`を一覧化 |
 | `git_register_repository` | 許可されたroot配下のworktreeを登録 |
 | `git_status` | branch、staged、unstaged、untracked状態を取得 |
-| `git_log` | revision、期間、author、message、pathで履歴を検索 |
-| `git_show_commit` | commit metadata、stat、任意のpatchを取得 |
-| `git_diff` | working tree、index、2 revisionをcontext行数・rename検出指定で比較 |
+| `git_log` | revision、期間、author、message、pathで履歴を検索し、rename前も追跡 |
+| `git_show_commit` | commit metadata、stat、path限定可能なpatchを取得 |
+| `git_diff` | working tree、index、HEAD、2 revisionをcontext行数・rename検出指定で比較 |
 | `git_range_diff` | 2つのcommit rangeを比較 |
 | `git_blame` | fileの行単位attributionを取得 |
 | `git_grep` | working tree、index、revisionの内容を検索 |
 | `git_list_refs` | branch、tag、remote-tracking refを一覧化 |
 | `git_list_tree` | revision時点のtreeを一覧化 |
-| `git_read_file` | revision時点のbounded blobを取得 |
+| `git_read_file` | revision、index、working treeからbounded fileを取得 |
 | `git_compare_refs` | merge baseとahead/behind件数を取得 |
 | `git_list_remotes` | URLを開示せずremote名を一覧化 |
 | `git_list_remote_refs` | 設定済みpublic anonymous HTTPS remoteのrefを取得 |
 
 最初に`git_list_repositories`を呼びます。対象が未登録なら`git_register_repository`へpathを渡し、返された`repositoryId`を以後のツールへ渡します。ツール結果は`structuredContent`とJSON textの両方で返されます。
 
-`git_diff`の`contextLine`はpatchに含める変更前後の行数（0〜100、既定3）、`findRenames`はrename検出の有効・無効（既定`true`）を指定します。
+### AI review workflow
+
+rename前を含む対象ファイルの履歴を取得します。`followRenames`は`path`指定時だけ利用できます。
+
+```json
+{
+  "repositoryId": "project-0123456789ab",
+  "revision": "HEAD",
+  "path": "docs/design.md",
+  "followRenames": true,
+  "limit": 20
+}
+```
+
+履歴から選んだcommitを対象ファイルに限定して読みます。
+
+```json
+{
+  "repositoryId": "project-0123456789ab",
+  "revision": "abc1234",
+  "path": "docs/design.md",
+  "includePatch": true,
+  "contextLine": 8,
+  "findRenames": true
+}
+```
+
+HEADから現在のworking treeまでのtracked変更をまとめてレビューします。`head`はstagedとunstagedを含みますが、untracked fileは含みません。
+
+```json
+{
+  "repositoryId": "project-0123456789ab",
+  "mode": "head",
+  "path": "docs/design.md",
+  "format": "patch",
+  "contextLine": 8,
+  "findRenames": true
+}
+```
+
+`git_diff`の他のmodeは、`working`がindex対working tree、`staged`がHEAD対index、`revisions`が`base`対`head`です。`mergeBase: true`を指定した`revisions`はmerge baseから`head`までを比較します。
+
+作業中またはuntrackedの設計書全文はworking treeから読みます。
+
+```json
+{
+  "repositoryId": "project-0123456789ab",
+  "target": "working",
+  "path": "docs/design.md",
+  "maxBytes": 262144
+}
+```
+
+`git_read_file.target`は`revision`（既定）、`index`、`working`から選択します。`revision`だけが`revision`入力を利用し、`working`はsymlink解決後もrepository内にあるfileだけを読みます。
 
 ## Security model
 

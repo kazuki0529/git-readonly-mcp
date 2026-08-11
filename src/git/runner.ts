@@ -64,6 +64,7 @@ export class GitRunner {
     const commandArgs = [
       '--no-optional-locks',
       '--no-lazy-fetch',
+      '--literal-pathspecs',
       '-c', 'color.ui=false',
       '-c', 'core.pager=cat',
       '-c', 'pager.branch=false',
