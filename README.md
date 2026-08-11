@@ -24,6 +24,19 @@ npm run test:integration
 dist/git-readonly-mcp.mjs
 ```
 
+GitHub Releaseを公開すると、release tagからbuildとtestを実行し、bundle、README、LICENSEを含むzipとSHA-256 checksumをRelease assetsへ添付します。
+
+```text
+git-readonly-mcp-<tag>.zip
+git-readonly-mcp-<tag>.zip.sha256
+```
+
+checksum fileとzipを同じディレクトリへ置き、次のコマンドで検証できます。
+
+```bash
+sha256sum --check git-readonly-mcp-<tag>.zip.sha256
+```
+
 直接起動する場合:
 
 ```bash
