@@ -1,5 +1,8 @@
 import { lookup } from 'node:dns/promises';
+import { open, realpath } from 'node:fs/promises';
 import { isIP } from 'node:net';
+import { resolve } from 'node:path';
+import { containsPath } from '../path-policy.js';
 import type { GitResult, GitRunOptions } from './runner.js';
 import { GitRunner } from './runner.js';
 import { validateRemoteName, validateRepositoryPath, validateRevision } from './validators.js';
@@ -29,13 +32,23 @@ export interface LogOptions {
   until?: string | undefined;
   firstParent?: boolean | undefined;
   merges?: 'include' | 'only' | 'exclude' | undefined;
+  followRenames: boolean;
   limit: number;
   offset: number;
 }
 
+/** commit表示で受け付けるpatchとpath指定。 */
+export interface ShowCommitOptions {
+  revision: string;
+  includePatch: boolean;
+  contextLine: number;
+  findRenames: boolean;
+  path?: string | undefined;
+}
+
 /** worktreeとrevision比較で受け付けるmode。 */
 export interface DiffOptions {
-  mode: 'working' | 'staged' | 'revisions';
+  mode: 'working' | 'staged' | 'head' | 'revisions';
   base?: string | undefined;
   head?: string | undefined;
   mergeBase: boolean;
@@ -53,6 +66,14 @@ export interface GrepOptions {
   path?: string | undefined;
   patternType: 'fixed' | 'basic' | 'extended';
   context: number;
+}
+
+/** file内容取得で受け付けるsourceと出力上限。 */
+export interface ReadFileOptions {
+  target: 'revision' | 'index' | 'working';
+  revision: string;
+  path: string;
+  maxBytes: number;
 }
 
 /** 固定Git queryが必要とする最小限のexecutor契約。 */
@@ -77,6 +98,10 @@ export class GitQueries {
 
   /** server側で構築したrevision rangeを使い、上限付きcommit履歴を読む。 */
   async log(repositoryPath: string, options: LogOptions, signal?: AbortSignal): Promise<QueryOutput> {
+    if (options.followRenames && !options.path) {
+      throw new Error('path is required when followRenames is enabled.');
+    }
+
     const args = [
       'log', '--no-color', '--no-decorate', '--no-show-signature', '--no-notes', '--no-mailmap',
       `--max-count=${options.limit}`, `--skip=${options.offset}`,
@@ -85,6 +110,7 @@ export class GitQueries {
     if (options.firstParent) args.push('--first-parent');
     if (options.merges === 'only') args.push('--merges');
     if (options.merges === 'exclude') args.push('--no-merges');
+    if (options.followRenames) args.push('--follow');
     if (options.message) args.push('--fixed-strings', `--grep=${options.message}`);
     if (options.author) args.push(`--author=${options.author}`);
     if (options.since) args.push(`--since=${options.since}`);
@@ -97,12 +123,16 @@ export class GitQueries {
   }
 
   /** commit metadataと、必要に応じて上限付きpatchを読む。 */
-  async showCommit(repositoryPath: string, revision: string, includePatch: boolean, signal?: AbortSignal): Promise<QueryOutput> {
-    const oid = await this.resolveCommit(repositoryPath, revision, signal);
+  async showCommit(repositoryPath: string, options: ShowCommitOptions, signal?: AbortSignal): Promise<QueryOutput> {
+    const oid = await this.resolveCommit(repositoryPath, options.revision, signal);
     const args = [
       'show', '--no-color', '--no-ext-diff', '--no-textconv', '--no-show-signature', '--no-notes', '--no-mailmap',
-      '--format=fuller', '--stat', '--summary', includePatch ? '--patch' : '--no-patch', oid,
+      '--format=fuller', '--stat', '--summary', `--unified=${options.contextLine}`,
+      options.findRenames ? '--find-renames' : '--no-renames', options.includePatch ? '--patch' : '--no-patch', oid,
     ];
+
+    if (options.path) args.push('--', validateRepositoryPath(options.path));
+
     return textResult(await this.runner.run(repositoryPath, args, { signal }));
   }
 
@@ -119,6 +149,7 @@ export class GitQueries {
     if (options.format === 'stat') args.push('--stat');
     if (options.format === 'name-status') args.push('--name-status', '-z');
     if (options.mode === 'staged') args.push('--cached');
+    if (options.mode === 'head') args.push(await this.resolveCommit(repositoryPath, 'HEAD', signal));
     if (options.mode === 'revisions') {
       if (!options.base || !options.head) throw new Error('base and head are required for revisions mode.');
       const base = await this.resolveCommit(repositoryPath, options.base, signal);
@@ -198,22 +229,30 @@ export class GitQueries {
     return textResult(result, result.stdout.replaceAll('\0', '\n'));
   }
 
-  /** typeとsizeを確認してからfile blobを読む。 */
-  async readFile(repositoryPath: string, revision: string, path: string, maxBytes: number, signal?: AbortSignal): Promise<QueryOutput> {
-    const oid = await this.resolveCommit(repositoryPath, revision, signal);
-    const repositoryPathname = validateRepositoryPath(path);
-    const spec = `${oid}:${repositoryPathname}`;
+  /** revision、index、またはworktreeから上限付きfile内容を読む。 */
+  async readFile(repositoryPath: string, options: ReadFileOptions, signal?: AbortSignal): Promise<QueryOutput> {
+    const repositoryPathname = validateRepositoryPath(options.path);
+    if (options.target === 'working') {
+      return await this.readWorkingFile(repositoryPath, repositoryPathname, options.maxBytes);
+    }
+
+    const spec = options.target === 'index'
+      ? `:${repositoryPathname}`
+      : `${await this.resolveCommit(repositoryPath, options.revision, signal)}:${repositoryPathname}`;
     const type = await this.runner.run(repositoryPath, ['cat-file', '-t', spec], { signal });
     if (type.stdout.trim() !== 'blob') throw new Error('Requested object is not a file.');
 
     // 上限超過blobをmemoryへ載せないため、contentより先にsizeを確認する。
     const size = await this.runner.run(repositoryPath, ['cat-file', '-s', spec], { signal });
     const byteLength = Number.parseInt(size.stdout.trim(), 10);
-    if (!Number.isSafeInteger(byteLength) || byteLength > maxBytes) {
-      throw new Error(`File is ${byteLength} bytes; limit is ${maxBytes} bytes.`);
+    if (!Number.isSafeInteger(byteLength) || byteLength > options.maxBytes) {
+      throw new Error(`File is ${byteLength} bytes; limit is ${options.maxBytes} bytes.`);
     }
 
-    return textResult(await this.runner.run(repositoryPath, ['cat-file', 'blob', spec], { signal, stdoutLimit: maxBytes }));
+    return textResult(await this.runner.run(repositoryPath, ['cat-file', 'blob', spec], {
+      signal,
+      stdoutLimit: options.maxBytes,
+    }));
   }
 
   /** 2つのrefを解決し、merge baseと左右固有の件数を返す。 */
@@ -251,6 +290,39 @@ export class GitQueries {
     const validated = validateRevision(revision);
     const result = await this.runner.run(repositoryPath, ['rev-parse', '--verify', '--end-of-options', `${validated}^{commit}`], { signal });
     return result.stdout.trim();
+  }
+
+  /** symlink解決後もrepository内にあるworktree fileを上限付きで読む。 */
+  private async readWorkingFile(repositoryPath: string, path: string, maxBytes: number): Promise<QueryOutput> {
+    const canonicalRoot = await realpath(repositoryPath);
+    const canonicalFile = await realpath(resolve(canonicalRoot, path));
+    if (!containsPath(canonicalRoot, canonicalFile)) {
+      throw new Error('Working tree file resolves outside the repository.');
+    }
+
+    const file = await open(canonicalFile, 'r');
+    try {
+      const fileStat = await file.stat();
+      if (!fileStat.isFile()) throw new Error('Requested working tree path is not a file.');
+      if (fileStat.size > maxBytes) {
+        throw new Error(`File is ${fileStat.size} bytes; limit is ${maxBytes} bytes.`);
+      }
+
+      const content = Buffer.allocUnsafe(maxBytes + 1);
+      let totalBytes = 0;
+      while (totalBytes < content.length) {
+        const { bytesRead } = await file.read(content, totalBytes, content.length - totalBytes, totalBytes);
+        if (bytesRead === 0) break;
+        totalBytes += bytesRead;
+      }
+      if (totalBytes > maxBytes) {
+        throw new Error(`File exceeds limit of ${maxBytes} bytes.`);
+      }
+
+      return { output: content.subarray(0, totalBytes).toString('utf8'), truncated: false };
+    } finally {
+      await file.close();
+    }
   }
 
   /** 単一commit、または解決済みobject IDから組み立てたrangeを選択する。 */

@@ -120,6 +120,8 @@ export function registerGitTools(server: McpServer, registry: RepositoryRegistry
       until: z.string().min(1).optional(),
       firstParent: z.boolean().default(false),
       merges: z.enum(['include', 'only', 'exclude']).default('include'),
+      followRenames: z.boolean().default(false)
+        .describe('Continue history beyond renames; requires path.'),
       limit: z.number().int().min(1).max(200).default(50),
       offset: z.number().int().min(0).max(10_000).default(0),
     }),
@@ -134,22 +136,22 @@ export function registerGitTools(server: McpServer, registry: RepositoryRegistry
       repositoryId,
       revision,
       includePatch: z.boolean().default(true),
+      contextLine: z.number().int().min(0).max(100).default(3)
+        .describe('Number of unchanged lines shown before and after each patch change.'),
+      findRenames: z.boolean().default(true)
+        .describe('Detect renamed files regardless of repository diff configuration.'),
+      path: path.optional(),
     }),
-    (input, signal) => queries.showCommit(
-      registry.requirePath(input.repositoryId),
-      input.revision,
-      input.includePatch,
-      signal,
-    ),
+    (input, signal) => queries.showCommit(registry.requirePath(input.repositoryId), input, signal),
   );
 
   register(
     server,
     'git_diff',
-    'Compare working tree, index, or two revisions.',
+    'Compare working tree, index, HEAD, or two revisions.',
     z.object({
       repositoryId,
-      mode: z.enum(['working', 'staged', 'revisions']).default('working'),
+      mode: z.enum(['working', 'staged', 'head', 'revisions']).default('working'),
       base: z.string().min(1).optional(),
       head: z.string().min(1).optional(),
       mergeBase: z.boolean().default(false),
@@ -260,20 +262,15 @@ export function registerGitTools(server: McpServer, registry: RepositoryRegistry
   register(
     server,
     'git_read_file',
-    'Read a bounded file blob at a revision.',
+    'Read a bounded file from a revision, the index, or the working tree.',
     z.object({
       repositoryId,
+      target: z.enum(['revision', 'index', 'working']).default('revision'),
       revision,
       path,
       maxBytes: z.number().int().min(1).max(1_048_576).default(262_144),
     }),
-    (input, signal) => queries.readFile(
-      registry.requirePath(input.repositoryId),
-      input.revision,
-      input.path,
-      input.maxBytes,
-      signal,
-    ),
+    (input, signal) => queries.readFile(registry.requirePath(input.repositoryId), input, signal),
   );
 
   register(
